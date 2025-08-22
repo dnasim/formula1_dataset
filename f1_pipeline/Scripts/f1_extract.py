@@ -1,6 +1,9 @@
 import requests
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
+import psycopg2
+from psycopg2 import extras
+import os
 from typing import Any, Dict, Optional, Callable
 
 BASE_URL = "https://api.jolpi.ca/ergast/f1" 
@@ -100,7 +103,7 @@ def insert_circuits_stg(rows):
     cols = ["year","circuit_id","circuit_name","city","country","latitude","longitude","wiki_url"]
     
     conn = psycopg2.connect(
-        dbname=os.getenv("PGDATABASE", "f1_stg"),
+        dbname=os.getenv("PGDATABASE", "formula1"),
         user=os.getenv("PGUSER", "postgres"),
         password=os.getenv("PGPASSWORD", ""),
         host=os.getenv("PGHOST", "localhost"),
@@ -110,7 +113,7 @@ def insert_circuits_stg(rows):
     cur = conn.cursor()
 
     cur.execute("""
-        CREATE TABLE IF NOT EXISTS circuits_stg (
+        CREATE TABLE IF NOT EXISTS f1_stg.circuits_stg (
           year        INTEGER,
           circuit_id  TEXT PRIMARY KEY,
           circuit_name TEXT,
@@ -126,7 +129,7 @@ def insert_circuits_stg(rows):
     values = [tuple(r.get(c) for c in cols) for r in rows]
 
     sql = f"""
-        INSERT INTO circuits_stg ({', '.join(cols)})
+        INSERT INTO f1_stg.circuits_stg ({', '.join(cols)})
         VALUES %s
         ON CONFLICT (circuit_id) DO UPDATE SET
           year = EXCLUDED.year,
@@ -137,7 +140,7 @@ def insert_circuits_stg(rows):
           longitude = EXCLUDED.longitude,
           wiki_url = EXCLUDED.wiki_url;
     """
-    execute_values(cur, sql, values, page_size=1000)
+    extras.execute_values(cur, sql, values, page_size=1000)
 
     conn.commit()
     cur.close()
@@ -165,7 +168,7 @@ def insert_constructors_stg(rows):
     cols = ["year","constructor_id","constructor_name","nationality","wiki_url"]
     
     conn = psycopg2.connect(
-        dbname=os.getenv("PGDATABASE", "f1_stg"),
+        dbname=os.getenv("PGDATABASE", "formula1"),
         user=os.getenv("PGUSER", "postgres"),
         password=os.getenv("PGPASSWORD", ""),
         host=os.getenv("PGHOST", "localhost"),
@@ -175,7 +178,7 @@ def insert_constructors_stg(rows):
     cur = conn.cursor()
 
     cur.execute("""
-        CREATE TABLE IF NOT EXISTS constructors_stg (
+        CREATE TABLE IF NOT EXISTS f1_stg.constructors_stg (
           year        INTEGER,
           constructor_id  TEXT PRIMARY KEY,
           constructor_name TEXT,
@@ -188,7 +191,7 @@ def insert_constructors_stg(rows):
     values = [tuple(r.get(c) for c in cols) for r in rows]
 
     sql = f"""
-        INSERT INTO constructors_stg ({', '.join(cols)})
+        INSERT INTO f1_stg.constructors_stg ({', '.join(cols)})
         VALUES %s
         ON CONFLICT (constructor_id) DO UPDATE SET
           year = EXCLUDED.year,
@@ -197,7 +200,7 @@ def insert_constructors_stg(rows):
           nationality = EXCLUDED.nationality,
           wiki_url = EXCLUDED.wiki_url;
     """
-    execute_values(cur, sql, values, page_size=1000)
+    extras.execute_values(cur, sql, values, page_size=1000)
 
     conn.commit()
     cur.close()

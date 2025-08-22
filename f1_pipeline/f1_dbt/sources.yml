@@ -1,0 +1,8 @@
+version: 2
+sources:
+  - name: staging
+    database: formula1
+    schema: f1_stg              # or 'public' if that’s where your raw tables live today
+    tables:
+      - name: circuits_stg
+      - name: constructors_stg
