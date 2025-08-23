@@ -114,14 +114,15 @@ def insert_circuits_stg(rows):
 
     cur.execute("""
         CREATE TABLE IF NOT EXISTS f1_stg.circuits_stg (
-          year        INTEGER,
-          circuit_id  TEXT PRIMARY KEY,
-          circuit_name TEXT,
-          city        TEXT,
-          country     TEXT,
-          latitude    DOUBLE PRECISION,
-          longitude   DOUBLE PRECISION,
-          wiki_url    TEXT
+          year          INTEGER,
+          circuit_id    TEXT,
+          circuit_name  TEXT,
+          city          TEXT,
+          country       TEXT,
+          latitude      DOUBLE PRECISION,
+          longitude     DOUBLE PRECISION,
+          wiki_url      TEXT,
+          PRIMARY KEY (year, circuit_id)
         );
     """)
 
@@ -131,7 +132,7 @@ def insert_circuits_stg(rows):
     sql = f"""
         INSERT INTO f1_stg.circuits_stg ({', '.join(cols)})
         VALUES %s
-        ON CONFLICT (circuit_id) DO UPDATE SET
+        ON CONFLICT (year, circuit_id) DO UPDATE SET
           year = EXCLUDED.year,
           circuit_name = EXCLUDED.circuit_name,
           city = EXCLUDED.city,
@@ -179,11 +180,12 @@ def insert_constructors_stg(rows):
 
     cur.execute("""
         CREATE TABLE IF NOT EXISTS f1_stg.constructors_stg (
-          year        INTEGER,
-          constructor_id  TEXT PRIMARY KEY,
-          constructor_name TEXT,
-          nationality        TEXT,
-          wiki_url    TEXT
+          year              INTEGER,
+          constructor_id    TEXT,
+          constructor_name  TEXT,
+          nationality       TEXT,
+          wiki_url          TEXT,
+          PRIMARY KEY (year, constructor_id)
         );
     """)
 
@@ -193,7 +195,7 @@ def insert_constructors_stg(rows):
     sql = f"""
         INSERT INTO f1_stg.constructors_stg ({', '.join(cols)})
         VALUES %s
-        ON CONFLICT (constructor_id) DO UPDATE SET
+        ON CONFLICT (year, constructor_id) DO UPDATE SET
           year = EXCLUDED.year,
           constructor_id = EXCLUDED.constructor_id,
           constructor_name = EXCLUDED.constructor_name,
@@ -206,13 +208,89 @@ def insert_constructors_stg(rows):
     cur.close()
     conn.close()
 
+def format_constructor_standings(client: F1Client, year: int):
+    client = F1Client() 
+    raw = client._get(f"{year}/constructorstandings")
+    constructor_standings = parse_constructor_standings(raw)
+
+    rows = []
+    for constructor_standing in constructor_standings:
+        loc = constructor_standing.get("Constructor", {})
+        rows.append({
+            "year": year,
+            "position": constructor_standing.get('position'),
+            "positionText": constructor_standing.get('positionText'),
+            "points": constructor_standing.get('points'),
+            "wins": constructor_standing.get('wins'),
+            "constructorId": loc.get("constructorId"),
+            "url": loc.get("url"),
+            "name": loc.get("name"),
+            "nationality": loc.get("nationality"),
+        })
+    return rows
+
+def insert_constructor_standings_stg(rows):
+
+    cols = ["year","position","positionText","points","wins","constructorId","url","name","nationality"]
+    
+    conn = psycopg2.connect(
+        dbname=os.getenv("PGDATABASE", "formula1"),
+        user=os.getenv("PGUSER", "postgres"),
+        password=os.getenv("PGPASSWORD", ""),
+        host=os.getenv("PGHOST", "localhost"),
+        port=os.getenv("PGPORT", "5432"),
+    )
+    conn.autocommit = False
+    cur = conn.cursor()
+
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS f1_stg.constructor_standings_stg (
+          year              INTEGER,
+          position          INTEGER,
+          positionText      TEXT,
+          points            INTEGER,
+          wins              INTEGER,
+          constructorId     TEXT,
+          url               TEXT,
+          name              TEXT,
+          nationality       TEXT,
+          PRIMARY KEY (year, constructorId)
+        );
+    """)
+
+    # Convert list[dict] -> list[tuple] in column order
+    values = [tuple(r.get(c) for c in cols) for r in rows]
+
+    sql = f"""
+        INSERT INTO f1_stg.constructor_standings_stg ({', '.join(cols)})
+        VALUES %s
+        ON CONFLICT (year, constructorId) DO UPDATE SET
+          year = EXCLUDED.year,
+          position = EXCLUDED.position,
+          positionText = EXCLUDED.positionText,
+          points = EXCLUDED.points,
+          wins = EXCLUDED.wins,
+          constructorId = EXCLUDED.constructorId,
+          url = EXCLUDED.url,
+          name = EXCLUDED.name,
+          nationality = EXCLUDED.nationality
+          ;
+    """
+    extras.execute_values(cur, sql, values, page_size=1000)
+
+    conn.commit()
+    cur.close()
+    conn.close()
+
 def main():
     if __name__ == "__main__":
         client = F1Client()
         cnstr = format_constructors(client, 2025)
         circ = format_circuits(client, 2025)
+        consta = format_constructor_standings(client, 2025)
         insert_constructors_stg(cnstr)
         insert_circuits_stg(circ)
+        insert_constructor_standings_stg(consta)
         print('Process Completed')
 
 main()
